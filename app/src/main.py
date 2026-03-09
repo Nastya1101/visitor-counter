@@ -20,6 +20,24 @@ app = FastAPI(title="Visitor Counter")
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
+def get_client_ip(request: Request) -> str | None:
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        # RFC 7239 chain format: client, proxy1, proxy2...
+        first_hop = forwarded_for.split(",")[0].strip()
+        if first_hop:
+            return first_hop
+
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+
+    return request.client.host if request.client else None
+
 
 def get_db():
     db = SessionLocal()
@@ -39,10 +57,7 @@ def create_visit(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    forwarded_for = request.headers.get("x-forwarded-for")
-    real_ip = request.headers.get("x-real-ip")
-
-    ip_address = forwarded_for or real_ip or (request.client.host if request.client else None)
+    ip_address = get_client_ip(request)
     user_agent = request.headers.get("user-agent")
 
     visitor = Visitor(
