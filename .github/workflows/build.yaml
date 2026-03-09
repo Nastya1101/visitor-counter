@@ -5,7 +5,7 @@ run-name: "Build and push image for ${{ github.ref_name }} by ${{ github.actor }
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'app/**'
       - '.github/workflows/build.yml'
