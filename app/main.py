@@ -2,11 +2,12 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import Base, SessionLocal, engine
 from app.models import Visitor
-from app.schemas import VisitResponse
+from app.schemas import VisitResponse, VisitorRecord
 
 Base.metadata.create_all(bind=engine)
 
@@ -49,3 +50,9 @@ def create_visit(
     db.commit()
 
     return VisitResponse(message="Visitor saved")
+
+
+@app.get("/visitors", response_model=list[VisitorRecord])
+def get_visitors(db: Session = Depends(get_db)):
+    visitors = db.query(Visitor).order_by(desc(Visitor.visited_at), desc(Visitor.id)).all()
+    return visitors
