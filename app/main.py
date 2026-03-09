@@ -1,7 +1,11 @@
 from pathlib import Path
+from collections import Counter
+from datetime import datetime
+from io import BytesIO
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from openpyxl import Workbook
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -56,3 +60,38 @@ def create_visit(
 def get_visitors(db: Session = Depends(get_db)):
     visitors = db.query(Visitor).order_by(desc(Visitor.visited_at), desc(Visitor.id)).all()
     return visitors
+
+
+@app.get("/visitors/export")
+def export_visitors_to_excel(db: Session = Depends(get_db)):
+    visitors = db.query(Visitor).order_by(desc(Visitor.visited_at), desc(Visitor.id)).all()
+    visits_per_ip = Counter(visitor.ip_address for visitor in visitors)
+    unique_visitors: dict[str | None, Visitor] = {}
+
+    # visitors already sorted by newest first; keep first row per ip
+    for visitor in visitors:
+        if visitor.ip_address not in unique_visitors:
+            unique_visitors[visitor.ip_address] = visitor
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Visitors"
+    worksheet.append(["id", "ip_address", "user_agent", "visited_at", "quantity"])
+
+    for visitor in unique_visitors.values():
+        visited_at = visitor.visited_at.isoformat() if visitor.visited_at else None
+        quantity = visits_per_ip[visitor.ip_address]
+        worksheet.append([visitor.id, visitor.ip_address, visitor.user_agent, visited_at, quantity])
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+
+    filename = f"visitors_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
