@@ -3,7 +3,7 @@ x-app: &app
 
 services:
   web:
-    image: ghcr.io/anastasiia1101/visitor-counter:latest
+    image: ghcr.io/anastasiia1101/visitor-counter:${IMAGE_TAG:-latest}
     <<: *app
     environment:
       - DATABASE_URL=sqlite:////data/visitors.db
