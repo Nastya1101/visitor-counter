@@ -9,33 +9,6 @@ services:
       - DATABASE_URL=sqlite:////data/visitors.db
     volumes:
       - visitor-data:/data
-    labels:
-      # Обязательно включить Traefik
-      - "traefik.enable=true"
-
-      # --- HTTPS ROUTER ---
-      # Уникальный домен для приложения
-      - "traefik.http.routers.visitor.rule=Host(`visitor.technocrew.ru`)"
-      - "traefik.http.routers.visitor.entrypoints=websecure"
-      - "traefik.http.routers.visitor.tls.certresolver=myresolver"
-
-      # --- HTTP ROUTER (for redirect) ---
-      - "traefik.http.routers.visitor-http.rule=Host(`visitor.technocrew.ru`)"
-      - "traefik.http.routers.visitor-http.entrypoints=web"
-      - "traefik.http.routers.visitor-http.middlewares=redirect-to-https"
-
-      # --- Redirect middleware ---
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-
-      # --- INTERNAL PORT ---
-      - "traefik.http.services.visitor.loadbalancer.server.port=8000"
-
-    networks:
-      - traefik-net
-
-networks:
-  traefik-net:
-    external: true
 
 volumes:
   visitor-data:

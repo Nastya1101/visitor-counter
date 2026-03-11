@@ -47,8 +47,41 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ github.token }}
 
-    - name: Build and push image
+    - name: Build and Push image
       run: |
         IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
-        docker build -t "$IMAGE:latest" ./app
-        docker push "$IMAGE:latest"
+        docker build \
+          --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+          -t "${IMAGE}:latest" \
+          -t "${IMAGE}:${{ github.sha }}" \
+          ./app
+        docker push "${IMAGE}:latest"
+        docker push "${IMAGE}:${{ github.sha }}"
+
+    - name: Set IMAGE_TAG in Coolify
+      continue-on-error: true
+      env:
+        COOLIFY_API: ${{ secrets.COOLIFY_API }}
+        COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        COOLIFY_APP: ${{ secrets.COOLIFY_APP }}
+      run: |
+        curl -sS -X PATCH \
+          -H "Authorization: Bearer $COOLIFY_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -H "Content-Type: application/json" \
+          "$COOLIFY_API/applications/$COOLIFY_APP/envs/bulk" \
+          -d "{\"data\":[{\"key\":\"IMAGE_TAG\",\"value\":\"${{ github.sha }}\"}]}" \
+        || echo "::warning::Coolify IMAGE_TAG update failed"
+
+    - name: Trigger Coolify deploy
+      continue-on-error: true
+      env:
+        COOLIFY_API: ${{ secrets.COOLIFY_API }}
+        COOLIFY_APP: ${{ secrets.COOLIFY_APP }}
+        COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+      run: |
+        echo "Triggering Coolify deploy... ($COOLIFY_API/deploy?uuid=$COOLIFY_APP&force=true)"
+        curl -sS -X POST \
+          "$COOLIFY_API/deploy?uuid=$COOLIFY_APP&force=true" \
+          -H "Authorization: Bearer $COOLIFY_TOKEN" \
+        || echo "::warning::Coolify deploy trigger failed"
