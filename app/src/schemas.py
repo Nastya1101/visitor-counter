@@ -14,3 +14,23 @@ class VisitorRecord(BaseModel):
     visited_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GradeClickResponse(BaseModel):
+    message: str
+    grade_name: str
+
+
+class GradeClickRecord(BaseModel):
+    id: int
+    grade_name: str
+    ip_address: str | None
+    user_agent: str | None
+    clicked_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GradeClickStats(BaseModel):
+    grade_name: str
+    clicks: int
