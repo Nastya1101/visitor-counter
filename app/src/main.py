@@ -69,6 +69,7 @@ def render_grade_stats_page(stats: list[GradeClickStats]) -> str:
           <td>{escape(item.grade_name)}</td>
           <td>{item.clicks}</td>
           <td><a href="/grade-clicks/view/{quote(item.grade_name)}">Открыть</a></td>
+          <td><a href="/grade-clicks/{quote(item.grade_name)}/export">Скачать</a></td>
         </tr>
         """
         for item in stats
@@ -146,6 +147,7 @@ def render_grade_stats_page(stats: list[GradeClickStats]) -> str:
           <th>Класс</th>
           <th>Нажатий</th>
           <th>Детали</th>
+          <th>Excel</th>
         </tr>
       </thead>
       <tbody>
@@ -215,6 +217,11 @@ def render_grade_detail_page(grade_name: str, grade_clicks: list[GradeClick]) ->
       text-decoration: none;
       font-weight: 700;
     }}
+    .topbar-links {{
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+    }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -237,7 +244,10 @@ def render_grade_detail_page(grade_name: str, grade_clicks: list[GradeClick]) ->
   <div class="card">
     <div class="topbar">
       <h1>{escape(grade_name)}</h1>
-      <a href="/grade-clicks/view">Назад к общей статистике</a>
+      <div class="topbar-links">
+        <a href="/grade-clicks/{quote(grade_name)}/export">Скачать Excel</a>
+        <a href="/grade-clicks/view">Назад к общей статистике</a>
+      </div>
     </div>
     <table>
       <thead>
@@ -424,18 +434,6 @@ def get_grade_click_stats(db: Session = Depends(get_db)):
     return [GradeClickStats(grade_name=grade_name, clicks=clicks_map.get(grade_name, 0)) for grade_name in GRADE_NAMES]
 
 
-@app.get("/grade-clicks/{grade_name}", response_model=list[GradeClickRecord])
-def get_grade_clicks_by_grade(grade_name: str, db: Session = Depends(get_db)):
-    normalized_grade_name = validate_grade_name(grade_name)
-    grade_clicks = (
-        db.query(GradeClick)
-        .filter(GradeClick.grade_name == normalized_grade_name)
-        .order_by(desc(GradeClick.clicked_at), desc(GradeClick.id))
-        .all()
-    )
-    return grade_clicks
-
-
 @app.get("/grade-clicks/export")
 def export_grade_clicks_to_excel(db: Session = Depends(get_db)):
     stats = get_grade_click_stats(db)
@@ -482,3 +480,48 @@ def get_grade_clicks_by_grade_view(grade_name: str, db: Session = Depends(get_db
     normalized_grade_name = validate_grade_name(grade_name)
     grade_clicks = get_grade_clicks_by_grade(normalized_grade_name, db)
     return HTMLResponse(render_grade_detail_page(normalized_grade_name, grade_clicks))
+
+
+@app.get("/grade-clicks/{grade_name}", response_model=list[GradeClickRecord])
+def get_grade_clicks_by_grade(grade_name: str, db: Session = Depends(get_db)):
+    normalized_grade_name = validate_grade_name(grade_name)
+    grade_clicks = (
+        db.query(GradeClick)
+        .filter(GradeClick.grade_name == normalized_grade_name)
+        .order_by(desc(GradeClick.clicked_at), desc(GradeClick.id))
+        .all()
+    )
+    return grade_clicks
+
+
+@app.get("/grade-clicks/{grade_name}/export")
+def export_grade_clicks_by_grade_to_excel(grade_name: str, db: Session = Depends(get_db)):
+    normalized_grade_name = validate_grade_name(grade_name)
+    grade_clicks = get_grade_clicks_by_grade(normalized_grade_name, db)
+
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "Итого"
+    summary_sheet.append(["grade_name", "clicks"])
+    summary_sheet.append([normalized_grade_name, len(grade_clicks)])
+
+    worksheet = workbook.create_sheet(title=normalized_grade_name)
+    worksheet.append(["id", "grade_name", "ip_address", "user_agent", "clicked_at"])
+
+    for click in grade_clicks:
+        clicked_at = click.clicked_at.isoformat() if click.clicked_at else None
+        worksheet.append([click.id, click.grade_name, click.ip_address, click.user_agent, clicked_at])
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+
+    safe_grade_name = normalized_grade_name.replace(" ", "_")
+    filename = f"{safe_grade_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
